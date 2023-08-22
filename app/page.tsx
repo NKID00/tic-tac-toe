@@ -6,6 +6,8 @@ import { useMouse } from "@uidotdev/usehooks";
 
 import NoSsr from "./components/NoSsr";
 
+type Pos = { x: number; y: number };
+
 class AppState {
   squares: SquareState[][];
   paused: boolean;
@@ -36,15 +38,8 @@ class AppState {
     return this.squares[y][x];
   }
 
-  clickSquare(x: number, y: number): void {
-    switch (this.turn()) {
-      case Turn.Blue:
-        this.squares[y][x] = SquareState.Blue;
-        break;
-      case Turn.Red:
-        this.squares[y][x] = SquareState.Red;
-        break;
-    }
+  setSquare(x: number, y: number, square: SquareState): void {
+    this.squares[y][x] = square;
   }
 
   isSquareEmpty(x: number, y: number): boolean {
@@ -59,8 +54,43 @@ class AppState {
     );
   }
 
-  turn(): Turn {
-    return this.emptySquareCount() % 2 === 0 ? Turn.Red : Turn.Blue;
+  blueSquareCount(): number {
+    return _.sum(
+      this.squares.map((states) =>
+        _.sum(states.map((state) => (state === SquareState.Blue ? 1 : 0))),
+      ),
+    );
+  }
+
+  redSquareCount(): number {
+    return _.sum(
+      this.squares.map((states) =>
+        _.sum(states.map((state) => (state === SquareState.Red ? 1 : 0))),
+      ),
+    );
+  }
+
+  redSquare(): Pos | null {
+    let redSquares = _.range(0, 3)
+      .flatMap((y) => _.range(0, 3).map((x) => ({ x, y })))
+      .filter(({ x, y }) => this.square(x, y) === SquareState.Red);
+    if (redSquares.length > 0) {
+      return redSquares[0];
+    } else {
+      return null;
+    }
+  }
+
+  randomEmptySquare(): Pos | null {
+    if (this.emptySquareCount() > 0) {
+      return _.sample(
+        _.range(0, 3)
+          .flatMap((y) => _.range(0, 3).map((x) => ({ x, y })))
+          .filter(({ x, y }) => this.isSquareEmpty(x, y)),
+      ) as Pos;
+    } else {
+      return null;
+    }
   }
 
   gameState(): GameState {
@@ -71,7 +101,9 @@ class AppState {
       _.range(0, 3).some((x) =>
         _.range(0, 3).every((y) => this.square(x, y) === SquareState.Blue),
       ) ||
+      // diagonal 1
       _.range(0, 3).every((i) => this.square(i, i) === SquareState.Blue) ||
+      // diagonal 2
       _.range(0, 3).every((i) => this.square(2 - i, i) === SquareState.Blue)
     ) {
       return GameState.BlueWins;
@@ -83,7 +115,9 @@ class AppState {
       _.range(0, 3).some((x) =>
         _.range(0, 3).every((y) => this.square(x, y) === SquareState.Red),
       ) ||
+      // diagonal 1
       _.range(0, 3).every((i) => this.square(i, i) === SquareState.Red) ||
+      // diagonal 2
       _.range(0, 3).every((i) => this.square(2 - i, i) === SquareState.Red)
     ) {
       return GameState.RedWins;
@@ -99,18 +133,22 @@ class AppState {
           _.range(0, 3).some((y) => this.square(x, y) === SquareState.Blue) &&
           _.range(0, 3).some((y) => this.square(x, y) === SquareState.Red),
       ) &&
+      // diagonal 1
       _.range(0, 3).some((i) => this.square(i, i) === SquareState.Blue) &&
       _.range(0, 3).some((i) => this.square(i, i) === SquareState.Red) &&
+      // diagonal 2
       _.range(0, 3).some((i) => this.square(2 - i, i) === SquareState.Blue) &&
       _.range(0, 3).some((i) => this.square(2 - i, i) === SquareState.Red)
     ) {
       return GameState.Draw;
     }
-    return GameState.Playing;
+    return this.emptySquareCount() % 2 === 0
+      ? GameState.RedTurn
+      : GameState.BlueTurn;
   }
 
   isPlaying(): boolean {
-    return this.gameState() === GameState.Playing;
+    return [GameState.BlueTurn, GameState.RedTurn].includes(this.gameState());
   }
 
   isOn(id: string): boolean {
@@ -133,17 +171,13 @@ class AppState {
     let text = "";
     let color = "";
     switch (this.gameState()) {
-      case GameState.Playing:
-        switch (this.turn()) {
-          case Turn.Blue:
-            text = "Your turn.";
-            color = "text-sky-400";
-            break;
-          case Turn.Red:
-            text = "Their turn.";
-            color = "text-red-400";
-            break;
-        }
+      case GameState.BlueTurn:
+        text = "Your turn.";
+        color = "text-sky-400";
+        break;
+      case GameState.RedTurn:
+        text = "Their turn.";
+        color = "text-red-400";
         break;
       case GameState.BlueWins:
         text = "You win.";
@@ -168,33 +202,152 @@ enum SquareState {
   Red,
 }
 
-enum Turn {
-  Blue,
-  Red,
-}
-
 enum GameState {
-  Playing,
+  BlueTurn,
+  RedTurn,
   BlueWins,
   RedWins,
   Draw,
 }
 
 type Action =
-  | { op: "ClickSquare"; square_x: number; square_y: number }
+  | { op: "YouClickSquare"; square_x: number; square_y: number }
+  | { op: "TheyClickSquare" }
   | { op: "Reset" }
   | { op: "Pause" }
   | { op: "Resume" }
-  | { op: "UpdatePointer"; ptr_x: number; ptr_y: number }
+  | { op: "SetPointer"; ptr_x: number; ptr_y: number }
   | { op: "MovePointer"; dx: number; dy: number };
 
 function updateAppState(state: AppState, action: Action): AppState {
   state = state.clone();
   switch (action.op) {
-    case "ClickSquare":
-      const { square_x, square_y } = action;
-      if (state.isPlaying() && state.isSquareEmpty(square_x, square_y)) {
-        state.clickSquare(square_x, square_y);
+    case "YouClickSquare":
+      state.setSquare(action.square_x, action.square_y, SquareState.Blue);
+      return state;
+    case "TheyClickSquare":
+      if (state.gameState() != GameState.RedTurn) {
+        return state;
+      }
+      switch (state.redSquareCount()) {
+        case 0: {
+          const square = _.sample(
+            [
+              { x: 0, y: 0 },
+              { x: 0, y: 2 },
+              { x: 2, y: 0 },
+              { x: 2, y: 2 },
+              { x: 1, y: 1 },
+            ].filter(({ x, y }) => state.isSquareEmpty(x, y)),
+          ) as Pos;
+          state.setSquare(square.x, square.y, SquareState.Red);
+          break;
+        }
+        case 1: {
+          let square = state.redSquare() as Pos;
+          let squares: Pos[] = [];
+          if (
+            _.range(0, 3).every(
+              (y) => state.square(square.x, y) !== SquareState.Blue,
+            )
+          ) {
+            squares = squares.concat(
+              _.range(0, 3).map((y) => ({ x: square.x, y })),
+            );
+          }
+          if (
+            _.range(0, 3).every(
+              (x) => state.square(x, square.y) !== SquareState.Blue,
+            )
+          ) {
+            squares = squares.concat(
+              _.range(0, 3).map((x) => ({ x, y: square.y })),
+            );
+          }
+          if (
+            // diagonal 1
+            square.x === square.y &&
+            _.range(0, 3).every((i) => state.square(i, i) !== SquareState.Blue)
+          ) {
+            squares = squares.concat(
+              _.range(0, 3).map((i) => ({ x: i, y: i })),
+            );
+          } else if (
+            // diagonal 2
+            square.x + square.y === 2 &&
+            _.range(0, 3).every(
+              (i) => state.square(i, 2 - i) !== SquareState.Blue,
+            )
+          ) {
+            squares = squares.concat(
+              _.range(0, 3).map((i) => ({ x: i, y: 2 - i })),
+            );
+          }
+          square = _.sample(
+            [...new Set(squares)].filter(({ x, y }) =>
+              state.isSquareEmpty(x, y),
+            ),
+          ) as Pos;
+          state.setSquare(square.x, square.y, SquareState.Red);
+          break;
+        }
+        case 2: {
+          let square = state.redSquare() as Pos;
+          let squares: Pos[] = [];
+          if (
+            _.range(0, 3).every(
+              (y) => state.square(square.x, y) !== SquareState.Blue,
+            ) &&
+            _.range(0, 3).filter(
+              (y) => state.square(square.x, y) === SquareState.Red,
+            ).length === 2
+          ) {
+            squares = squares.concat(
+              _.range(0, 3).map((y) => ({ x: square.x, y })),
+            );
+          }
+          if (
+            _.range(0, 3).every(
+              (x) => state.square(x, square.y) !== SquareState.Blue,
+            ) &&
+            _.range(0, 3).filter(
+              (x) => state.square(x, square.y) === SquareState.Red,
+            ).length === 2
+          ) {
+            squares = squares.concat(
+              _.range(0, 3).map((x) => ({ x, y: square.y })),
+            );
+          }
+          if (
+            // diagonal 1
+            square.x === square.y &&
+            _.range(0, 3).every(
+              (i) => state.square(i, i) !== SquareState.Blue,
+            ) &&
+            _.range(0, 3).filter((i) => state.square(i, i) === SquareState.Red)
+              .length === 2
+          ) {
+            squares = squares.concat(
+              _.range(0, 3).map((i) => ({ x: i, y: i })),
+            );
+          } else if (
+            // diagonal 2
+            square.x + square.y === 2 &&
+            _.range(0, 3).every(
+              (i) => state.square(i, 2 - i) !== SquareState.Blue,
+            ) &&
+            _.range(0, 3).filter(
+              (i) => state.square(i, 2 - i) === SquareState.Red,
+            ).length === 2
+          ) {
+            squares = squares.concat(
+              _.range(0, 3).map((i) => ({ x: i, y: 2 - i })),
+            );
+          }
+          square = squares.filter(({ x, y }) => state.isSquareEmpty(x, y))[0];
+          state.setSquare(square.x, square.y, SquareState.Red);
+          break;
+        }
       }
       return state;
     case "Reset":
@@ -206,7 +359,7 @@ function updateAppState(state: AppState, action: Action): AppState {
     case "Resume":
       state.paused = false;
       return state;
-    case "UpdatePointer":
+    case "SetPointer":
       state.ptr_x = action.ptr_x;
       state.ptr_y = action.ptr_y;
       return state;
@@ -268,11 +421,24 @@ function Square({
       data-id="square"
       className={`rounded w-20 h-20 ${bg}`}
       onClick={() => {
-        dispatch({
-          op: "ClickSquare",
-          square_x: x,
-          square_y: y,
-        });
+        if (
+          state.gameState() === GameState.BlueTurn &&
+          state.isSquareEmpty(x, y)
+        ) {
+          dispatch({
+            op: "YouClickSquare",
+            square_x: x,
+            square_y: y,
+          });
+          setTimeout(
+            () => {
+              dispatch({
+                op: "TheyClickSquare",
+              });
+            },
+            _.random(200, 300),
+          );
+        }
       }}
     />
   );
@@ -328,11 +494,11 @@ function Controls({
 function Cursor({ state }: { state: AppState }) {
   let shape = "/ptr.png";
   if (state.isOn("square")) {
-    if (state.isPlaying()) {
+    if (state.gameState() === GameState.BlueTurn) {
       let x_str = state.ptr_on?.getAttribute("data-x") as string;
       let y_str = state.ptr_on?.getAttribute("data-y") as string;
       let [x, y] = [parseInt(x_str), parseInt(y_str)];
-      if (state.square(x, y) == SquareState.Empty) {
+      if (state.square(x, y) === SquareState.Empty) {
         shape = "/hand.png";
       } else {
         shape = "/x.png";
@@ -392,7 +558,7 @@ export default function Page() {
         onClick={() => {
           if (state.paused) {
             if (mainRef.current) {
-              dispatch({ op: "UpdatePointer", ptr_x: mouse.x, ptr_y: mouse.y });
+              dispatch({ op: "SetPointer", ptr_x: mouse.x, ptr_y: mouse.y });
               mainRef.current.requestPointerLock();
             }
           } else if (state.ptr_on) {
