@@ -3,7 +3,6 @@
 import {
   Dispatch,
   MouseEventHandler,
-  MutableRefObject,
   useEffect,
   useReducer,
   useRef,
@@ -12,11 +11,14 @@ import Image from "next/image";
 import _ from "lodash";
 import { useMouse } from "@uidotdev/usehooks";
 
+import NoSsr from "./components/NoSsr";
+
 class AppState {
   squares: SquareState[][];
   paused: boolean;
   ptr_x: number;
   ptr_y: number;
+  ptr_on: HTMLButtonElement | null;
 
   constructor() {
     this.squares = _.range(0, 3).map((_y) =>
@@ -24,6 +26,11 @@ class AppState {
     );
     this.paused = true;
     this.ptr_x = this.ptr_y = 0;
+    this.ptr_on = null;
+  }
+
+  clone(): AppState {
+    return _.cloneDeep(this);
   }
 
   reset() {
@@ -113,9 +120,22 @@ class AppState {
     return this.gameState() === GameState.Playing;
   }
 
+  isOn(id: string): boolean {
+    return this.ptr_on !== null && this.ptr_on.getAttribute("data-id") === id;
+  }
+
+  isOnSquare(x: number, y: number): boolean {
+    return (
+      this.ptr_on !== null &&
+      this.isOn("square") &&
+      this.ptr_on.getAttribute("data-x") === x.toString() &&
+      this.ptr_on.getAttribute("data-y") === y.toString()
+    );
+  }
+
   message() {
-    let text = "",
-      color = "";
+    let text = "";
+    let color = "";
     switch (this.gameState()) {
       case GameState.Playing:
         switch (this.turn()) {
@@ -144,10 +164,6 @@ class AppState {
     }
     return <h2 className={`${color}`}>{text}</h2>;
   }
-
-  clone(): AppState {
-    return _.cloneDeep(this);
-  }
 }
 
 enum SquareState {
@@ -168,34 +184,13 @@ enum GameState {
   Draw,
 }
 
-function Square({
-  state,
-  onClick,
-}: {
-  state: SquareState;
-  onClick: MouseEventHandler;
-}) {
-  let bg = "";
-  switch (state) {
-    case SquareState.Empty:
-      bg = "bg-neutral-100 hover:bg-neutral-200";
-      break;
-    case SquareState.Blue:
-      bg = "bg-sky-200 hover:bg-sky-100";
-      break;
-    case SquareState.Red:
-      bg = "bg-red-200 hover:bg-red-100";
-      break;
-  }
-  return <button className={`rounded w-20 h-20 ${bg}`} onClick={onClick} />;
-}
-
 type Action =
   | { op: "ClickSquare"; square_x: number; square_y: number }
   | { op: "Reset" }
   | { op: "Pause" }
   | { op: "Resume" }
-  | { op: "UpdatePointer"; ptr_x: number; ptr_y: number };
+  | { op: "UpdatePointer"; ptr_x: number; ptr_y: number }
+  | { op: "MovePointer"; dx: number; dy: number };
 
 function updateAppState(state: AppState, action: Action): AppState {
   state = state.clone();
@@ -219,7 +214,72 @@ function updateAppState(state: AppState, action: Action): AppState {
       state.ptr_x = action.ptr_x;
       state.ptr_y = action.ptr_y;
       return state;
+    case "MovePointer":
+      state.ptr_x += action.dx;
+      state.ptr_y += action.dy;
+      const ptr_size =
+        2 * parseFloat(getComputedStyle(document.documentElement).fontSize);
+      if (
+        state.ptr_x > window.innerWidth + ptr_size ||
+        state.ptr_x < -ptr_size ||
+        state.ptr_y > window.innerHeight + ptr_size ||
+        state.ptr_y < -ptr_size
+      ) {
+        document.exitPointerLock();
+        state.ptr_on = null;
+      } else {
+        const elements = document
+          .elementsFromPoint(state.ptr_x, state.ptr_y)
+          .filter((element) => element.tagName === "BUTTON");
+        if (elements.length > 0) {
+          state.ptr_on = elements[0] as HTMLButtonElement;
+        } else {
+          state.ptr_on = null;
+        }
+      }
+      return state;
   }
+}
+
+function Square({
+  state,
+  dispatch,
+  x,
+  y,
+}: {
+  state: AppState;
+  dispatch: Dispatch<Action>;
+  x: number;
+  y: number;
+}) {
+  let hover = state.isOnSquare(x, y);
+  let bg = "";
+  switch (state.square(x, y)) {
+    case SquareState.Empty:
+      bg = hover ? "bg-neutral-200" : "bg-neutral-100";
+      break;
+    case SquareState.Blue:
+      bg = hover ? "bg-sky-100" : "bg-sky-200";
+      break;
+    case SquareState.Red:
+      bg = hover ? "bg-red-100" : "bg-red-200";
+      break;
+  }
+  return (
+    <button
+      data-x={x}
+      data-y={y}
+      data-id="square"
+      className={`rounded w-20 h-20 ${bg}`}
+      onClick={() => {
+        dispatch({
+          op: "ClickSquare",
+          square_x: x,
+          square_y: y,
+        });
+      }}
+    />
+  );
 }
 
 function Board({
@@ -234,17 +294,7 @@ function Board({
       {_.range(0, 3).map((y) => (
         <div key={y} className="space-x-2">
           {_.range(0, 3).map((x) => (
-            <Square
-              key={x}
-              state={state.square(x, y)}
-              onClick={() => {
-                dispatch({
-                  op: "ClickSquare",
-                  square_x: x,
-                  square_y: y,
-                });
-              }}
-            />
+            <Square key={x} state={state} dispatch={dispatch} x={x} y={y} />
           ))}
         </div>
       ))}
@@ -263,8 +313,15 @@ function Controls({
     <div className="h-60 w-60 flex flex-col justify-evenly items-start">
       <div className="py-2 text-3xl font-bold">{state.message()}</div>
       <button
-        className="px-5 py-2 rounded bg-neutral-100 hover:bg-neutral-200 text-xl font-bold"
-        onClick={() => dispatch({ op: "Reset" })}
+        data-id="reset"
+        className={`px-5 py-2 rounded ${
+          state.isOn("reset") ? "bg-neutral-200" : "bg-neutral-100"
+        } text-xl font-bold`}
+        onClick={() => {
+          if (state.emptySquareCount() < 9) {
+            dispatch({ op: "Reset" });
+          }
+        }}
       >
         RESET
       </button>
@@ -272,21 +329,41 @@ function Controls({
   );
 }
 
-function Cursor({
-  mainRef,
-  state,
-  dispatch,
-}: {
-  mainRef: MutableRefObject<HTMLDivElement | null>;
-  state: AppState;
-  dispatch: Dispatch<Action>;
-}) {
+function Cursor({ state }: { state: AppState }) {
+  let shape = "/ptr.png";
+  if (state.isOn("square")) {
+    if (state.isPlaying()) {
+      let x_str = (state.ptr_on as HTMLButtonElement).getAttribute(
+        "data-x",
+      ) as string;
+      let y_str = (state.ptr_on as HTMLButtonElement).getAttribute(
+        "data-y",
+      ) as string;
+      let [x, y] = [parseInt(x_str), parseInt(y_str)];
+      if (state.square(x, y) == SquareState.Empty) {
+        shape = "/hand.png";
+      } else {
+        shape = "/x.png";
+      }
+    } else {
+      shape = "/x.png";
+    }
+  } else if (state.isOn("reset")) {
+    if (state.emptySquareCount() < 9) {
+      shape = "/hand.png";
+    } else {
+      shape = "/x.png";
+    }
+  }
   return (
     <div
       className={`absolute w-8 h-8 z-20 ${state.paused ? "hidden" : ""}`}
       style={{ left: state.ptr_x, top: state.ptr_y }}
     >
-      <Image src="/hand.png" fill={true} alt="Cursor" />
+      <link rel="preload" as="image" href="hand.png" />
+      <link rel="preload" as="image" href="ptr.png" />
+      <link rel="preload" as="image" href="x.png" />
+      <Image src={shape} fill={true} sizes="2rem, 2rem" alt="Cursor" />
     </div>
   );
 }
@@ -313,11 +390,28 @@ export default function Page() {
       <main
         className="min-h-screen min-w-screen text-neutral-600"
         onPointerLeave={() => document.exitPointerLock()}
+        onPointerMove={(e) => {
+          dispatch({
+            op: "MovePointer",
+            dx: Math.abs(e.movementX) > 1 ? e.movementX : 0,
+            dy: Math.abs(e.movementY) > 1 ? e.movementY : 0,
+          });
+        }}
+        onClick={() => {
+          if (state.paused) {
+            if (mainRef.current) {
+              dispatch({ op: "UpdatePointer", ptr_x: mouse.x, ptr_y: mouse.y });
+              mainRef.current.requestPointerLock();
+            }
+          } else if (state.ptr_on) {
+            state.ptr_on.click();
+          }
+        }}
       >
         <div
           ref={mainRef}
           className={`absolute left-0 right-0 top-0 bottom-0 flex flex-col min-h-screen min-w-screen justify-start items-center z-0 ${
-            state.paused ? "blur-lg" : ""
+            state.paused ? "blur-xl" : ""
           }`}
         >
           <div className="flex flex-row justify-center items-center gap-20 pt-[20%]">
@@ -329,19 +423,12 @@ export default function Page() {
           className={`absolute left-0 right-0 top-0 bottom-0 flex flex-col min-h-screen min-w-screen justify-start items-center gap-20 z-10 ${
             state.paused ? "" : "hidden"
           }`}
-          onClick={() => {
-            if (mainRef.current) {
-              console.log(`${mouse.x}, ${mouse.y}`);
-              dispatch({ op: "UpdatePointer", ptr_x: mouse.x, ptr_y: mouse.y });
-              mainRef.current.requestPointerLock();
-            }
-          }}
         >
           <h2 className="text-6xl font-bold pt-[20%]">Tic Tac Toe</h2>
           <h2 className="text-4xl font-bold text-violet-400">Tap to Start</h2>
         </div>
       </main>
-      <Cursor mainRef={mainRef} state={state} dispatch={dispatch} />
+      <Cursor state={state} />
     </>
   );
 }
