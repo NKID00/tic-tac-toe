@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  Dispatch,
-  MouseEventHandler,
-  useEffect,
-  useReducer,
-  useRef,
-} from "react";
-import Image from "next/image";
+import { Dispatch, useEffect, useReducer, useRef } from "react";
 import _ from "lodash";
 import { useMouse } from "@uidotdev/usehooks";
 
@@ -121,15 +114,18 @@ class AppState {
   }
 
   isOn(id: string): boolean {
-    return this.ptr_on !== null && this.ptr_on.getAttribute("data-id") === id;
+    return (
+      !this.paused &&
+      this.ptr_on !== null &&
+      this.ptr_on.getAttribute("data-id") === id
+    );
   }
 
   isOnSquare(x: number, y: number): boolean {
     return (
-      this.ptr_on !== null &&
       this.isOn("square") &&
-      this.ptr_on.getAttribute("data-x") === x.toString() &&
-      this.ptr_on.getAttribute("data-y") === y.toString()
+      this.ptr_on?.getAttribute("data-x") === x.toString() &&
+      this.ptr_on?.getAttribute("data-y") === y.toString()
     );
   }
 
@@ -333,12 +329,8 @@ function Cursor({ state }: { state: AppState }) {
   let shape = "/ptr.png";
   if (state.isOn("square")) {
     if (state.isPlaying()) {
-      let x_str = (state.ptr_on as HTMLButtonElement).getAttribute(
-        "data-x",
-      ) as string;
-      let y_str = (state.ptr_on as HTMLButtonElement).getAttribute(
-        "data-y",
-      ) as string;
+      let x_str = state.ptr_on?.getAttribute("data-x") as string;
+      let y_str = state.ptr_on?.getAttribute("data-y") as string;
       let [x, y] = [parseInt(x_str), parseInt(y_str)];
       if (state.square(x, y) == SquareState.Empty) {
         shape = "/hand.png";
@@ -363,7 +355,7 @@ function Cursor({ state }: { state: AppState }) {
       <link rel="preload" as="image" href="hand.png" />
       <link rel="preload" as="image" href="ptr.png" />
       <link rel="preload" as="image" href="x.png" />
-      <Image src={shape} fill={true} sizes="2rem, 2rem" alt="Cursor" />
+      <img className="w-full h-full" src={shape} alt="Cursor" />
     </div>
   );
 }
