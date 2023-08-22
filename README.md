@@ -2,9 +2,15 @@
 
 Part of Practices
 
+## Development
+
 ```sh
 pnpm dev
 ```
+
+## Credits
+
+Cursors in `public/` are copied from <https://github.com/ful1e5/apple_cursor>.
 
 Copyright (C) 2023 NKID00
 

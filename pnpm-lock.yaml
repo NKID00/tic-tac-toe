@@ -17,6 +17,9 @@ dependencies:
   '@types/react-dom':
     specifier: 18.2.7
     version: 18.2.7
+  '@uidotdev/usehooks':
+    specifier: ^2.1.1
+    version: 2.1.1(react-dom@18.2.0)(react@18.2.0)
   autoprefixer:
     specifier: 10.4.15
     version: 10.4.15(postcss@8.4.28)
@@ -386,6 +389,17 @@ packages:
     dependencies:
       '@typescript-eslint/types': 6.4.0
       eslint-visitor-keys: 3.4.3
+    dev: false
+
+  /@uidotdev/usehooks@2.1.1(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-sVJ1jXU62Edh22dREEa3mHcHnH2MUgokuzLw9guNS30ADCkdhYASNZxg2V8iB83iwY5H+jSeSxjqGaFvsRrNBQ==}
+    engines: {node: '>=16'}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+    dependencies:
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
     dev: false
 
   /acorn-jsx@5.3.2(acorn@8.10.0):

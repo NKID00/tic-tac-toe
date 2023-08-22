@@ -1,12 +1,32 @@
 "use client";
 
-import { MouseEventHandler, ReactElement, useReducer } from "react";
+import {
+  Dispatch,
+  MouseEventHandler,
+  MutableRefObject,
+  useEffect,
+  useReducer,
+  useRef,
+} from "react";
+import Image from "next/image";
 import _ from "lodash";
+import { useMouse } from "@uidotdev/usehooks";
 
-class BoardState {
+class AppState {
   squares: SquareState[][];
+  paused: boolean;
+  ptr_x: number;
+  ptr_y: number;
 
   constructor() {
+    this.squares = _.range(0, 3).map((_y) =>
+      _.range(0, 3).map((_x) => SquareState.Empty),
+    );
+    this.paused = true;
+    this.ptr_x = this.ptr_y = 0;
+  }
+
+  reset() {
     this.squares = _.range(0, 3).map((_y) =>
       _.range(0, 3).map((_x) => SquareState.Empty),
     );
@@ -125,7 +145,7 @@ class BoardState {
     return <h2 className={`${color}`}>{text}</h2>;
   }
 
-  clone(): BoardState {
+  clone(): AppState {
     return _.cloneDeep(this);
   }
 }
@@ -170,72 +190,158 @@ function Square({
   return <button className={`rounded w-20 h-20 ${bg}`} onClick={onClick} />;
 }
 
-enum Operation {
-  ClickSquare,
-  Reset,
-}
+type Action =
+  | { op: "ClickSquare"; square_x: number; square_y: number }
+  | { op: "Reset" }
+  | { op: "Pause" }
+  | { op: "Resume" }
+  | { op: "UpdatePointer"; ptr_x: number; ptr_y: number };
 
-function updateBoard(
-  state: BoardState,
-  action:
-    | { op: Operation.ClickSquare; x: number; y: number }
-    | { op: Operation.Reset },
-): BoardState {
+function updateAppState(state: AppState, action: Action): AppState {
+  state = state.clone();
   switch (action.op) {
-    case Operation.ClickSquare:
-      let { x, y } = action;
-      if (state.isPlaying() && state.isSquareEmpty(x, y)) {
-        state = state.clone();
-        state.clickSquare(x, y);
+    case "ClickSquare":
+      const { square_x, square_y } = action;
+      if (state.isPlaying() && state.isSquareEmpty(square_x, square_y)) {
+        state.clickSquare(square_x, square_y);
       }
       return state;
-    case Operation.Reset:
-      return new BoardState();
+    case "Reset":
+      state.reset();
+      return state;
+    case "Pause":
+      state.paused = true;
+      return state;
+    case "Resume":
+      state.paused = false;
+      return state;
+    case "UpdatePointer":
+      state.ptr_x = action.ptr_x;
+      state.ptr_y = action.ptr_y;
+      return state;
   }
 }
 
-function Board() {
-  const [state, dispatch] = useReducer(
-    updateBoard,
-    null,
-    () => new BoardState(),
-  );
+function Board({
+  state,
+  dispatch,
+}: {
+  state: AppState;
+  dispatch: Dispatch<Action>;
+}) {
   return (
-    <div className="flex flex-row justify-center items-center gap-20">
-      <div className="space-y-2">
-        {_.range(0, 3).map((y) => (
-          <div key={y} className="space-x-2">
-            {_.range(0, 3).map((x) => (
-              <Square
-                key={x}
-                state={state.square(x, y)}
-                onClick={() => {
-                  dispatch({ op: Operation.ClickSquare, x, y });
-                }}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
-      <div className="h-60 w-60 flex flex-col justify-evenly items-start">
-        <div className="py-2 text-3xl font-bold">
-          {state.message()}
+    <div className="space-y-2">
+      {_.range(0, 3).map((y) => (
+        <div key={y} className="space-x-2">
+          {_.range(0, 3).map((x) => (
+            <Square
+              key={x}
+              state={state.square(x, y)}
+              onClick={() => {
+                dispatch({
+                  op: "ClickSquare",
+                  square_x: x,
+                  square_y: y,
+                });
+              }}
+            />
+          ))}
         </div>
-        <button
-          className="px-5 py-2 rounded bg-neutral-100 hover:bg-neutral-200 text-xl font-bold"
-          onClick={() => dispatch({ op: Operation.Reset })}
-        >
-          RESET
-        </button>
-      </div>
+      ))}
+    </div>
+  );
+}
+
+function Controls({
+  state,
+  dispatch,
+}: {
+  state: AppState;
+  dispatch: Dispatch<Action>;
+}) {
+  return (
+    <div className="h-60 w-60 flex flex-col justify-evenly items-start">
+      <div className="py-2 text-3xl font-bold">{state.message()}</div>
+      <button
+        className="px-5 py-2 rounded bg-neutral-100 hover:bg-neutral-200 text-xl font-bold"
+        onClick={() => dispatch({ op: "Reset" })}
+      >
+        RESET
+      </button>
+    </div>
+  );
+}
+
+function Cursor({
+  mainRef,
+  state,
+  dispatch,
+}: {
+  mainRef: MutableRefObject<HTMLDivElement | null>;
+  state: AppState;
+  dispatch: Dispatch<Action>;
+}) {
+  return (
+    <div
+      className={`absolute w-8 h-8 z-20 ${state.paused ? "hidden" : ""}`}
+      style={{ left: state.ptr_x, top: state.ptr_y }}
+    >
+      <Image src="/hand.png" fill={true} alt="Cursor" />
     </div>
   );
 }
 
 export default function Page() {
+  const [state, dispatch] = useReducer(
+    updateAppState,
+    null,
+    () => new AppState(),
+  );
+  const mainRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    document.addEventListener("pointerlockchange", () => {
+      if (document.pointerLockElement) {
+        dispatch({ op: "Resume" });
+      } else {
+        dispatch({ op: "Pause" });
+      }
+    });
+  }, []);
+  const [mouse, _ref] = useMouse();
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <Board />
-    </main>
+    <>
+      <main
+        className="min-h-screen min-w-screen text-neutral-600"
+        onPointerLeave={() => document.exitPointerLock()}
+      >
+        <div
+          ref={mainRef}
+          className={`absolute left-0 right-0 top-0 bottom-0 flex flex-col min-h-screen min-w-screen justify-start items-center z-0 ${
+            state.paused ? "blur-lg" : ""
+          }`}
+        >
+          <div className="flex flex-row justify-center items-center gap-20 pt-[20%]">
+            <Board state={state} dispatch={dispatch} />
+            <Controls state={state} dispatch={dispatch} />
+          </div>
+        </div>
+        <div
+          className={`absolute left-0 right-0 top-0 bottom-0 flex flex-col min-h-screen min-w-screen justify-start items-center gap-20 z-10 ${
+            state.paused ? "" : "hidden"
+          }`}
+          onClick={() => {
+            if (mainRef.current) {
+              console.log(`${mouse.x}, ${mouse.y}`);
+              dispatch({ op: "UpdatePointer", ptr_x: mouse.x, ptr_y: mouse.y });
+              mainRef.current.requestPointerLock();
+            }
+          }}
+        >
+          <h2 className="text-6xl font-bold pt-[20%]">Tic Tac Toe</h2>
+          <h2 className="text-4xl font-bold text-violet-400">Tap to Start</h2>
+        </div>
+      </main>
+      <Cursor mainRef={mainRef} state={state} dispatch={dispatch} />
+    </>
   );
 }
