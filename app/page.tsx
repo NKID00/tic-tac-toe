@@ -11,8 +11,7 @@ import {
 import _ from "lodash";
 import { useMouse } from "@uidotdev/usehooks";
 import seedrandom from "seedrandom";
-
-import NoSsr from "./components/NoSsr";
+import { isBrowser } from "react-device-detect";
 
 type Pos = { x: number; y: number };
 
@@ -522,25 +521,25 @@ function Controls({ state }: { state: AppState }) {
 }
 
 function Cursor({ state }: { state: AppState }) {
-  let shape = "/ptr.png";
+  let shape = "ptr.png";
   if (state.isOn("square")) {
     if (state.gameState() === GameState.BlueTurn) {
       let x_str = state.ptrOn?.getAttribute("data-x") as string;
       let y_str = state.ptrOn?.getAttribute("data-y") as string;
       let [x, y] = [parseInt(x_str), parseInt(y_str)];
       if (state.square(x, y) === SquareState.Empty) {
-        shape = "/hand.png";
+        shape = "hand.png";
       } else {
-        shape = "/x.png";
+        shape = "x.png";
       }
     } else {
-      shape = "/x.png";
+      shape = "x.png";
     }
   } else if (state.isOn("reset")) {
     if (state.emptySquareCount() < 9) {
-      shape = "/hand.png";
+      shape = "hand.png";
     } else {
-      shape = "/x.png";
+      shape = "x.png";
     }
   }
   return (
@@ -579,13 +578,18 @@ export default function Page() {
         className="min-h-screen min-w-screen text-neutral-600"
         onPointerLeave={() => document.exitPointerLock()}
         onPointerMove={(e) => {
-          dispatch({
-            op: "MovePointer",
-            dx: Math.abs(e.movementX) > 1 ? e.movementX : 0,
-            dy: Math.abs(e.movementY) > 1 ? e.movementY : 0,
-          });
+          if (!state.paused) {
+            dispatch({
+              op: "MovePointer",
+              dx: Math.abs(e.movementX) > 1 ? e.movementX : 0,
+              dy: Math.abs(e.movementY) > 1 ? e.movementY : 0,
+            });
+          }
         }}
         onClick={() => {
+          if (!isBrowser) {
+            return;
+          }
           if (state.paused) {
             if (mainRef.current) {
               dispatch({ op: "SetPointer", ptrX: mouse.x, ptrY: mouse.y });
@@ -627,7 +631,7 @@ export default function Page() {
             state.paused ? "blur-xl" : ""
           }`}
         >
-          <div className="flex flex-row justify-center items-center gap-20 pt-[20%]">
+          <div className="flex flex-row justify-center items-center gap-20 pt-[12rem]">
             <Board state={state} />
             <Controls state={state} />
           </div>
@@ -637,8 +641,28 @@ export default function Page() {
             state.paused ? "" : "hidden"
           }`}
         >
-          <h2 className="text-6xl font-bold pt-[20%]">Tic Tac Toe</h2>
-          <h2 className="text-4xl font-bold text-violet-400">Tap to Start</h2>
+          <h2 className="text-6xl font-bold pt-[12rem]">Tic Tac Toe</h2>
+          <h2 className="text-4xl font-bold text-violet-400">
+            {isBrowser ? "Tap to Start" : "Desktop Browser Required"}
+          </h2>
+          <div className="text-sm text-neutral-400 w-[45rem]">
+            <p>Copyright (C) 2023 NKID00</p>
+            <br />
+            <p>
+              This program is free software: you can redistribute it and/or
+              modify it under the terms of the GNU Affero General Public License
+              as published by the Free Software Foundation, either version 3 of
+              the License, or (at your option) any later version. This program
+              is distributed in the hope that it will be useful, but WITHOUT ANY
+              WARRANTY; without even the implied warranty of MERCHANTABILITY or
+              FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General
+              Public License for more details. You should have received a copy
+              of the GNU Affero General Public License along with this program.
+              If not, see {"<https://www.gnu.org/licenses/>"}.
+            </p>
+            <br />
+            <p>Source: https://git.nkid00.name/NKID00/tic-tac-toe</p>
+          </div>
         </div>
       </main>
       <Cursor state={state} />
