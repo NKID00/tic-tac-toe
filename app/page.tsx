@@ -12,6 +12,13 @@ import _ from "lodash";
 import { useMouse } from "@uidotdev/usehooks";
 import seedrandom from "seedrandom";
 import { isBrowser } from "react-device-detect";
+import {
+  SpringRef,
+  SpringValue,
+  animated,
+  useSpring,
+  useSprings,
+} from "@react-spring/web";
 
 type Pos = { x: number; y: number };
 
@@ -48,7 +55,35 @@ class AppState {
     return this.squares[y][x];
   }
 
-  setSquare(x: number, y: number, square: SquareState): void {
+  setSquare(
+    x: number,
+    y: number,
+    square: SquareState,
+    api: SpringRef<{ size: number }>,
+  ): void {
+    api.start((i: number) =>
+      i == y * 3 + x
+        ? {
+            to: [
+              {
+                size: 0.95,
+                config: {
+                  tension: 800,
+                  clamp: true,
+                },
+              },
+              {
+                size: 1.05,
+                config: {
+                  tension: 800,
+                  friction: 5,
+                  clamp: false,
+                },
+              },
+            ],
+          }
+        : null,
+    );
     this.squares[y][x] = square;
   }
 
@@ -329,8 +364,9 @@ type Action =
       squareX: number;
       squareY: number;
       mainRef: MutableRefObject<HTMLDivElement>;
+      api: SpringRef<{ size: number }>;
     }
-  | { op: "TheyClickSquare" }
+  | { op: "TheyClickSquare"; api: SpringRef<{ size: number }> }
   | { op: "Reset" }
   | { op: "Pause" }
   | { op: "Resume" }
@@ -347,7 +383,12 @@ function updateAppState(state: AppState, action: Action): AppState {
       switch (state.redSquareCount()) {
         case 0:
         case 1:
-          state.setSquare(action.squareX, action.squareY, SquareState.Blue);
+          state.setSquare(
+            action.squareX,
+            action.squareY,
+            SquareState.Blue,
+            action.api,
+          );
           break;
         case 2:
           if (
@@ -369,9 +410,9 @@ function updateAppState(state: AppState, action: Action): AppState {
               .flatMap((buttons) =>
                 Array.from(buttons.children).filter(
                   (button) =>
-                    (button.getAttribute("data-x") as string) ===
+                    (button.children[0].getAttribute("data-x") as string) ===
                       square.x.toString() &&
-                    (button.getAttribute("data-y") as string) ===
+                    (button.children[0].getAttribute("data-y") as string) ===
                       square.y.toString(),
                 ),
               )[0]
@@ -384,9 +425,14 @@ function updateAppState(state: AppState, action: Action): AppState {
               (rect.top * 2 + rect.bottom) / 3.0,
               (rect.top + rect.bottom * 2) / 3.0,
             );
-            state.setSquare(square.x, square.y, SquareState.Blue);
+            state.setSquare(square.x, square.y, SquareState.Blue, action.api);
           } else {
-            state.setSquare(action.squareX, action.squareY, SquareState.Blue);
+            state.setSquare(
+              action.squareX,
+              action.squareY,
+              SquareState.Blue,
+              action.api,
+            );
           }
           break;
       }
@@ -398,7 +444,7 @@ function updateAppState(state: AppState, action: Action): AppState {
       switch (state.redSquareCount()) {
         case 0: {
           if (state.isSquareEmpty(1, 1)) {
-            state.setSquare(1, 1, SquareState.Red);
+            state.setSquare(1, 1, SquareState.Red, action.api);
           } else {
             const square = state.deterministicSample(
               [
@@ -408,7 +454,7 @@ function updateAppState(state: AppState, action: Action): AppState {
                 { x: 2, y: 2 },
               ].filter(({ x, y }) => state.isSquareEmpty(x, y)),
             ) as Pos;
-            state.setSquare(square.x, square.y, SquareState.Red);
+            state.setSquare(square.x, square.y, SquareState.Red, action.api);
           }
           break;
         }
@@ -416,12 +462,12 @@ function updateAppState(state: AppState, action: Action): AppState {
           let square = state.deterministicSample(
             state.emptySquaresWithSingleIdentical(SquareState.Red),
           ) as Pos;
-          state.setSquare(square.x, square.y, SquareState.Red);
+          state.setSquare(square.x, square.y, SquareState.Red, action.api);
           break;
         }
         case 2: {
           let square = state.emptySquareWithDoubleIdentical(SquareState.Red);
-          state.setSquare(square.x, square.y, SquareState.Red);
+          state.setSquare(square.x, square.y, SquareState.Red, action.api);
           break;
         }
       }
@@ -466,37 +512,71 @@ function updateAppState(state: AppState, action: Action): AppState {
   }
 }
 
-function Square({ state, x, y }: { state: AppState; x: number; y: number }) {
+function Square({
+  state,
+  size,
+  x,
+  y,
+}: {
+  state: AppState;
+  size: SpringValue<number>;
+  x: number;
+  y: number;
+}) {
   let hover = state.isOnSquare(x, y);
-  let bg = "";
+  let color = "";
   switch (state.square(x, y)) {
     case SquareState.Empty:
-      bg = hover ? "bg-neutral-200" : "bg-neutral-100";
+      color = hover ? "rgb(229 229 229)" : "rgb(245 245 245)";
       break;
     case SquareState.Blue:
-      bg = hover ? "bg-sky-100" : "bg-sky-200";
+      color = hover ? "rgb(224 242 254)" : "rgb(186 230 253)";
       break;
     case SquareState.Red:
-      bg = hover ? "bg-red-100" : "bg-red-200";
+      color = hover ? "rgb(254 226 226)" : "rgb(254 202 202)";
       break;
   }
+  const { bg } = useSpring({
+    bg: color,
+    config: {
+      tension: 700,
+      friction: 5,
+      clamp: true,
+    },
+  });
   return (
-    <button
+    <animated.button
       data-x={x}
       data-y={y}
       data-id="square"
-      className={`rounded w-20 h-20 ${bg}`}
+      className="rounded"
+      style={{
+        backgroundColor: bg,
+        width: size.to((x) => `${x * 5}rem`),
+        height: size.to((x) => `${x * 5}rem`),
+      }}
     />
   );
 }
 
-function Board({ state }: { state: AppState }) {
+function Board({
+  state,
+  sizes,
+}: {
+  state: AppState;
+  sizes: SpringValue<number>[];
+}) {
   return (
-    <div className="space-y-2">
+    <div className="flex flex-row justify-center items-center">
       {_.range(0, 3).map((y) => (
-        <div key={y} className="space-x-2">
+        <div key={y} className="flex flex-col justify-center items-center">
           {_.range(0, 3).map((x) => (
-            <Square key={x} state={state} x={x} y={y} />
+            <div
+              key={x}
+              className="flex justify-center items-center w-[6rem] h-[6rem]"
+            >
+              <Square state={state} size={sizes[y * 3 + x]} x={x} y={y} />
+            </div>
           ))}
         </div>
       ))}
@@ -504,18 +584,44 @@ function Board({ state }: { state: AppState }) {
   );
 }
 
-function Controls({ state }: { state: AppState }) {
+function Controls({
+  state,
+  size,
+  imgStyle,
+}: {
+  state: AppState;
+  size: SpringValue<number>;
+  imgStyle: { right: SpringValue<string> };
+}) {
+  const buttonStyle = useSpring({
+    backgroundColor: state.isOn("reset")
+      ? "rgb(229 229 229)"
+      : "rgb(245 245 245)",
+    config: {
+      tension: 700,
+      friction: 5,
+      clamp: true,
+    },
+  });
   return (
     <div className="h-60 w-60 flex flex-col justify-evenly items-start">
       <div className="py-2 text-3xl font-bold">{state.message()}</div>
-      <button
+      <animated.button
         data-id="reset"
-        className={`px-5 py-2 rounded ${
-          state.isOn("reset") ? "bg-neutral-200" : "bg-neutral-100"
-        } text-xl font-bold`}
+        className="px-5 py-2 rounded text-xl font-bold"
+        style={{
+          transform: size.to((x) => `scale(${x})`),
+          ...buttonStyle,
+        }}
       >
         RESET
-      </button>
+      </animated.button>
+      <animated.img
+        className="absolute w-[30rem]"
+        src="RESET.webp"
+        alt="RESET"
+        style={imgStyle}
+      />
     </div>
   );
 }
@@ -544,7 +650,7 @@ function Cursor({ state }: { state: AppState }) {
   }
   return (
     <div
-      className={`absolute w-8 h-8 z-20 ${state.paused ? "hidden" : ""}`}
+      className={`absolute w-10 h-10 z-20 ${state.paused ? "hidden" : ""}`}
       style={{ left: state.ptrX, top: state.ptrY }}
     >
       <link rel="preload" as="image" href="hand.png" />
@@ -562,6 +668,15 @@ export default function Page() {
     () => new AppState(),
   );
   const mainRef = useRef<HTMLDivElement | null>(null);
+  const [mouse, _ref] = useMouse();
+  const { blur, opacity } = useSpring({
+    blur: state.paused ? "24px" : "0px",
+    opacity: state.paused ? 1 : 0,
+    config: {
+      tension: 500,
+      clamp: true,
+    },
+  });
   useEffect(() => {
     document.addEventListener("pointerlockchange", () => {
       if (document.pointerLockElement) {
@@ -571,7 +686,25 @@ export default function Page() {
       }
     });
   }, []);
-  const [mouse, _ref] = useMouse();
+  const [squareSprings, squareApi] = useSprings(9, () => ({
+    size: 1,
+  }));
+  const [{ size: resetSize }, resetApi] = useSpring(
+    {
+      size: 1,
+      config: {
+        tension: 800,
+        clamp: true,
+      },
+    },
+    [],
+  );
+  const [imgStyle, imgApi] = useSpring(
+    {
+      right: "-30rem",
+    },
+    [],
+  );
   return (
     <>
       <main
@@ -608,44 +741,85 @@ export default function Page() {
                 squareX: x,
                 squareY: y,
                 mainRef: mainRef as MutableRefObject<HTMLDivElement>,
+                api: squareApi,
               });
               setTimeout(
                 () => {
                   dispatch({
                     op: "TheyClickSquare",
+                    api: squareApi,
                   });
                 },
-                _.random(200, 300),
+                _.random(300, 500),
               );
             }
           } else if (state.isOn("reset")) {
             if (state.emptySquareCount() < 9) {
+              squareApi.start({
+                size: 1,
+                config: {
+                  tension: 800,
+                  friction: 5,
+                  clamp: false,
+                },
+              });
+              resetApi.start({ to: [{ size: 0.95 }, { size: 1 }] });
+              imgApi.start({
+                to: [
+                  {
+                    right: "2rem",
+                    config: {
+                      tension: 170,
+                      friction: 15,
+                      clamp: false,
+                    },
+                  },
+                  {
+                    right: "2.001rem",
+                    config: {
+                      duration: 500,
+                    },
+                  },
+                  {
+                    right: "-30rem",
+                    config: {
+                      tension: 100,
+                      friction: 5,
+                      clamp: true,
+                    },
+                  },
+                ],
+              });
               dispatch({ op: "Reset" });
             }
           }
         }}
       >
-        <div
+        <animated.div
           ref={mainRef}
-          className={`absolute left-0 right-0 top-0 bottom-0 flex flex-col min-h-screen min-w-screen justify-start items-center z-0 ${
-            state.paused ? "blur-xl" : ""
-          }`}
+          className="absolute left-0 right-0 top-0 bottom-0 flex flex-col min-h-screen min-w-screen justify-start items-center z-0"
+          style={{ filter: blur.to((x) => `blur(${x})`) }}
         >
           <div className="flex flex-row justify-center items-center gap-20 pt-[12rem]">
-            <Board state={state} />
-            <Controls state={state} />
+            <Board
+              state={state}
+              sizes={squareSprings.map(({ size }) => size)}
+            />
+            <Controls state={state} size={resetSize} imgStyle={imgStyle} />
           </div>
-        </div>
-        <div
-          className={`absolute left-0 right-0 top-0 bottom-0 flex flex-col min-h-screen min-w-screen justify-start items-center gap-20 z-10 ${
-            state.paused ? "" : "hidden"
-          }`}
+        </animated.div>
+        <animated.div
+          className="absolute left-0 right-0 top-0 bottom-0 flex flex-col min-h-screen min-w-screen justify-start items-center gap-20 z-10"
+          style={{
+            opacity: opacity,
+            display: opacity.to((x) => (x < 0.01 ? "none" : "")),
+          }}
         >
           <h2 className="text-6xl font-bold pt-[12rem]">Tic Tac Toe</h2>
           <h2 className="text-4xl font-bold text-violet-400">
             {isBrowser ? "Tap to Start" : "Desktop Browser Required"}
           </h2>
-          <div className="text-sm text-neutral-400 w-[45rem]">
+          <div className="text-sm text-justify text-neutral-400 w-[45rem]">
             <p>Copyright (C) 2023 NKID00</p>
             <br />
             <p>
@@ -663,7 +837,7 @@ export default function Page() {
             <br />
             <p>Source: https://git.nkid00.name/NKID00/tic-tac-toe</p>
           </div>
-        </div>
+        </animated.div>
       </main>
       <Cursor state={state} />
     </>
