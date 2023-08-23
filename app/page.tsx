@@ -11,7 +11,7 @@ import {
 import _ from "lodash";
 import { useMouse } from "@uidotdev/usehooks";
 import seedrandom from "seedrandom";
-import { isBrowser } from "react-device-detect";
+import { getSelectorsByUserAgent } from "react-device-detect";
 import {
   SpringRef,
   SpringValue,
@@ -677,14 +677,19 @@ export default function Page() {
       clamp: true,
     },
   });
+  const [isDesktop, setIsDesktop] = useState(true);
   useEffect(() => {
-    document.addEventListener("pointerlockchange", () => {
-      if (document.pointerLockElement) {
-        dispatch({ op: "Resume" });
-      } else {
-        dispatch({ op: "Pause" });
-      }
-    });
+    if (getSelectorsByUserAgent(window.navigator.userAgent).isDesktop) {
+      document.addEventListener("pointerlockchange", () => {
+        if (document.pointerLockElement) {
+          dispatch({ op: "Resume" });
+        } else {
+          dispatch({ op: "Pause" });
+        }
+      });
+    } else {
+      setIsDesktop(false);
+    }
   }, []);
   const [squareSprings, squareApi] = useSprings(9, () => ({
     size: 1,
@@ -720,7 +725,7 @@ export default function Page() {
           }
         }}
         onClick={() => {
-          if (!isBrowser) {
+          if (!isDesktop) {
             return;
           }
           if (state.paused) {
@@ -808,36 +813,43 @@ export default function Page() {
             <Controls state={state} size={resetSize} imgStyle={imgStyle} />
           </div>
         </animated.div>
-        <animated.div
-          className="absolute left-0 right-0 top-0 bottom-0 flex flex-col min-h-screen min-w-screen justify-start items-center gap-20 z-10"
-          style={{
-            opacity: opacity,
-            display: opacity.to((x) => (x < 0.01 ? "none" : "")),
-          }}
-        >
-          <h2 className="text-6xl font-bold pt-[12rem]">Tic Tac Toe</h2>
-          <h2 className="text-4xl font-bold text-violet-400">
-            {isBrowser ? "Tap to Start" : "Desktop Browser Required"}
-          </h2>
-          <div className="text-sm text-justify text-neutral-400 w-[45rem]">
-            <p>Copyright (C) 2023 NKID00</p>
-            <br />
-            <p>
-              This program is free software: you can redistribute it and/or
-              modify it under the terms of the GNU Affero General Public License
-              as published by the Free Software Foundation, either version 3 of
-              the License, or (at your option) any later version. This program
-              is distributed in the hope that it will be useful, but WITHOUT ANY
-              WARRANTY; without even the implied warranty of MERCHANTABILITY or
-              FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General
-              Public License for more details. You should have received a copy
-              of the GNU Affero General Public License along with this program.
-              If not, see {"<https://www.gnu.org/licenses/>"}.
-            </p>
-            <br />
-            <p>Source: https://git.nkid00.name/NKID00/tic-tac-toe</p>
+        {isDesktop ? (
+          <animated.div
+            className="absolute left-0 right-0 top-0 bottom-0 flex flex-col min-h-screen min-w-screen justify-start items-center gap-20 z-10"
+            style={{
+              opacity: opacity,
+              display: opacity.to((x) => (x < 0.01 ? "none" : "")),
+            }}
+          >
+            <h2 className="text-6xl font-bold pt-[12rem]">Tic Tac Toe</h2>
+            <h2 className="text-4xl font-bold text-violet-400">Tap to Start</h2>
+            <div className="text-sm text-justify text-neutral-400 w-[45rem]">
+              <p>Copyright (C) 2023 NKID00</p>
+              <br />
+              <p>
+                This program is free software: you can redistribute it and/or
+                modify it under the terms of the GNU Affero General Public
+                License as published by the Free Software Foundation, either
+                version 3 of the License, or (at your option) any later version.
+                This program is distributed in the hope that it will be useful,
+                but WITHOUT ANY WARRANTY; without even the implied warranty of
+                MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+                Affero General Public License for more details. You should have
+                received a copy of the GNU Affero General Public License along
+                with this program. If not, see{" "}
+                {"<https://www.gnu.org/licenses/>"}.
+              </p>
+              <br />
+              <p>Source: https://git.nkid00.name/NKID00/tic-tac-toe</p>
+            </div>
+          </animated.div>
+        ) : (
+          <div className="absolute left-0 right-0 top-0 bottom-0 min-h-screen min-w-screen flex flex-col justify-center items-center">
+            <h2 className="text-[6vmin] font-bold text-neutral-600">
+              Desktop Browser Required
+            </h2>
           </div>
-        </animated.div>
+        )}
       </main>
       <Cursor state={state} />
     </>
