@@ -840,7 +840,7 @@ export default function Page() {
                 {"<https://www.gnu.org/licenses/>"}.
               </p>
               <br />
-              <p>Source: https://git.nkid00.name/NKID00/tic-tac-toe</p>
+              <p>Source: https://github.com/NKID00/tic-tac-toe</p>
             </div>
           </animated.div>
         ) : (
