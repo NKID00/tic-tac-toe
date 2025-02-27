@@ -2,7 +2,7 @@
 const config = {
   output: "export",
   assetPrefix: "./",
-  basePath: "/tic-tac-toe",
+  basePath: "/g/tic-tac-toe",
 };
 
 export default config;
